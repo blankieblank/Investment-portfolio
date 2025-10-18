@@ -57,10 +57,19 @@ class PortfolioCreate(PortfolioBase):
     pass
 
 
+class PortfolioSnapshot(BaseModel):
+    current_value: float = 0.0
+    last_updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class Portfolio(PortfolioBase):
     id: int
     user_id: int
     transactions: List[Transaction] = []
+    snapshot: Optional[PortfolioSnapshot] = None
 
     class Config:
         from_attributes = True

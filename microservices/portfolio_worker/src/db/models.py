@@ -1,14 +1,5 @@
 import enum
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    DateTime,
-    ForeignKey,
-    Enum,
-    Numeric,
-    func,
-)
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Numeric, func, UniqueConstraint
 from sqlalchemy.orm import relationship, declarative_base
 
 Base = declarative_base()
@@ -46,18 +37,6 @@ class Portfolio(Base):
 
     owner = relationship("User", back_populates="portfolios")
     transactions = relationship("Transaction", back_populates="portfolio")
-    snapshot = relationship("PortfolioSnapshot", back_populates="portfolio", uselist=False, cascade="all, delete-orphan")
-
-
-class PortfolioSnapshot(Base):
-    __tablename__ = "portfolio_snapshots"
-
-    id = Column(Integer, primary_key=True)
-    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False, unique=True)
-    current_value = Column(Numeric(18, 4), nullable=False, default=0.0)
-    last_updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-
-    portfolio = relationship("Portfolio", back_populates="snapshot")
 
 
 class Asset(Base):

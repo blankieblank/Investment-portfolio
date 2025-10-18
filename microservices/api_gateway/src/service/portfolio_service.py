@@ -1,12 +1,19 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from db import models
 from api import schemas
 
 
-async def get_portfolios_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
-    query = select(models.Portfolio).filter(models.Portfolio.user_id == user_id).offset(skip).limit(limit)
+async def get_portfolios_by_user(db: AsyncSession, user_id: int, skip: int = 0, limit: int = 100):
+    query = (
+        select(models.Portfolio)
+        .where(models.Portfolio.user_id == user_id)
+        .options(joinedload(models.Portfolio.snapshot), joinedload(models.Portfolio.transactions)) # <-- Говорим SQLAlchemy загрузить снапшот и транзакции
+        .offset(skip)
+        .limit(limit)
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
