@@ -31,7 +31,7 @@ async def create_transaction_for_portfolio(
     current_user: models.User = Depends(get_current_user),
 ):
     db_portfolio = await portfolio_service.get_portfolio_by_id(db, portfolio_id=portfolio_id)
-    if not db_portfolio:
+    if not db_portfolio:    
         raise HTTPException(status_code=404, detail="Portfolio not found")
     if db_portfolio.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to add transaction to this portfolio")
