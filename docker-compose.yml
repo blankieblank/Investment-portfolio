@@ -1,31 +1,32 @@
-services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: portfolio_zookeeper
-    ports: [ "2181:2181" ]
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+version: '3.8'
 
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: portfolio_kafka
-    ports: [ "9092:9092" ]
+services:
+  kafka-broker:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: kafka_broker
+    hostname: kafka-broker
+    ports:
+      - "9093:9093"
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_INTERNAL://localhost:29092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-    depends_on:
-      - zookeeper
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 1342177280
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /tmp/kraft-logs
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
     healthcheck:
-      test: [ "CMD-SHELL", "/usr/bin/kafka-topics --bootstrap-server localhost:29092 --list || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - portfolio_network
 
   db:
     image: postgres:15-alpine
@@ -42,6 +43,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - portfolio_network
 
   redis:
     image: redis:7-alpine
@@ -54,6 +57,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - portfolio_network
 
   api:
     container_name: portfolio_api
@@ -64,24 +69,28 @@ services:
     volumes:
       - ./microservices/api_gateway:/app
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
-      kafka: { condition: service_healthy }
+      kafka-broker: { condition: service_started }
+    networks:
+      - portfolio_network
 
   data_fetcher:
     container_name: portfolio_data_fetcher
     build:
       context: ./microservices/data_fetcher
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
     volumes:
       - ./microservices/data_fetcher:/app
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-broker:
+        condition: service_started
+    networks:
+      - portfolio_network
 
   portfolio_worker:
     container_name: portfolio_worker
@@ -90,17 +99,62 @@ services:
     volumes:
       - ./microservices/portfolio_worker:/app
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - REDIS_HOST=redis
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
+      - REDIS_HOST=portfolio_redis
+      - REDIS_PORT=6379
       - POSTGRES_HOST=db
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=portfolio_db
     depends_on:
       redis: { condition: service_healthy }
-      kafka: { condition: service_healthy }
+      kafka-broker: { condition: service_started }
       db: { condition: service_healthy }
+    networks:
+      - portfolio_network
+
+  celery_exporter:
+    container_name: celery_exporter
+    build:
+      context: ./microservices/celery_exporter
+    ports:
+      - "9808:9808"
+    depends_on:
+      redis: { condition: service_healthy }
+      portfolio_worker: { condition: service_started }
+    networks:
+      - portfolio_network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports: [ "9090:9090" ]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command: --config.file=/etc/prometheus/prometheus.yml
+    depends_on:
+      - api
+      - celery_exporter
+    networks:
+      - portfolio_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports: [ "3000:3000" ]
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - portfolio_network
 
 volumes:
   postgres_data:
   redis_data:
+  grafana_data:
+
+
+networks:
+  portfolio_network:
+    driver: bridge

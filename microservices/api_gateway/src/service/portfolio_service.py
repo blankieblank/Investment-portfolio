@@ -10,7 +10,7 @@ async def get_portfolios_by_user(db: AsyncSession, user_id: int, skip: int = 0, 
     query = (
         select(models.Portfolio)
         .where(models.Portfolio.user_id == user_id)
-        .options(joinedload(models.Portfolio.snapshot), joinedload(models.Portfolio.transactions)) # <-- Говорим SQLAlchemy загрузить снапшот и транзакции
+        .options(joinedload(models.Portfolio.snapshot), joinedload(models.Portfolio.transactions))
         .offset(skip)
         .limit(limit)
     )

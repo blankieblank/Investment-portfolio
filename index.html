@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Portfolio Tracker</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 600px;
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        input,
+        button {
+            padding: 8px;
+            margin: 5px;
+        }
+
+        #status {
+            font-weight: bold;
+        }
+
+        #messages {
+            list-style-type: none;
+            padding: 0;
+            margin-top: 20px;
+            height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #eee;
+        }
+
+        #messages li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Real-Time Portfolio Tracker</h1>
+
+    <div class="container">
+        <h2>1. Authentication</h2>
+        <input type="email" id="email" placeholder="Email (e.g., test@test.com)">
+        <input type="password" id="password" placeholder="Password (e.g., test)">
+        <button onclick="login()">Login / Get Token</button>
+        <p>Token: <code id="token_display">None</code></p>
+    </div>
+
+    <div class="container">
+        <h2>2. WebSocket Connection</h2>
+        <button onclick="connectWS()" id="connectBtn" disabled>Connect to WebSocket</button>
+        <p>Status: <span id="status" style="color: red;">Disconnected</span></p>
+    </div>
+
+    <div class="container">
+        <h2>3. Live Updates</h2>
+        <ul id="messages"></ul>
+    </div>
+
+    <script>
+        let token = null;
+        let ws = null;
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const response = await fetch('/auth/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    'username': email,
+                    'password': password
+                })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                token = data.access_token;
+                document.getElementById('token_display').innerText = token.substring(0, 30) + '...';
+                document.getElementById('connectBtn').disabled = false;
+            } else {
+                alert('Login failed!');
+            }
+        }
+
+        function connectWS() {
+            if (!token) {
+                alert('Please login first!');
+                return;
+            }
+            if (ws) {
+                ws.close();
+            }
+
+            const wsUrl = `ws://${window.location.host}/ws?token=${token}`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function (event) {
+                document.getElementById('status').innerText = 'Connected';
+                document.getElementById('status').style.color = 'green';
+                addMessage('System', 'WebSocket connection established.');
+            };
+
+            ws.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                addMessage(`Portfolio #${data.portfolio_id}`, `New value: ${data.new_value.toFixed(2)}`);
+            };
+
+            ws.onclose = function (event) {
+                document.getElementById('status').innerText = 'Disconnected';
+                document.getElementById('status').style.color = 'red';
+                addMessage('System', 'WebSocket connection closed.');
+                ws = null;
+            };
+
+            ws.onerror = function (event) {
+                console.error("WebSocket error observed:", event);
+                addMessage('System', 'An error occurred with the WebSocket connection.');
+            };
+        }
+
+        function addMessage(source, text) {
+            const messages = document.getElementById('messages');
+            const li = document.createElement('li');
+            li.innerHTML = `<strong>${source}:</strong> ${text}`;
+            messages.appendChild(li);
+            messages.scrollTop = messages.scrollHeight;
+        }
+    </script>
+</body>
+
+</html>

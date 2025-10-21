@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
-from db.models import TransactionType, AssetType
+from src.db.models import TransactionType, AssetType
 
 
 class Token(BaseModel):
